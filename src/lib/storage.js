@@ -35,9 +35,5 @@ export function clearState() {
   LEGACY_KEYS.forEach(k => localStorage.removeItem(k));
 }
 
-// --- API key storage (free-tier keys stay on this device) ---
-const APIKEY_KEY = 'gameslate-apikey';
-const APIKEY_LEGACY = 'cricket-scoreboard-apikey';
 
-export const saveApiKey = (k) => localStorage.setItem(APIKEY_KEY, k || '');
-export const loadApiKey = () => localStorage.getItem(APIKEY_KEY) || localStorage.getItem(APIKEY_LEGACY) || '';
+

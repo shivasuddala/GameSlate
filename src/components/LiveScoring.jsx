@@ -118,30 +118,6 @@ function ExtraModal({ kind, onConfirm, onClose }) {
   );
 }
 
-/* ---------------- API-key modal ---------------- */
-export function ApiKeyModal({ onSave, onClose, initial = '' }) {
-  const [k, setK] = useState(initial);
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
-        <h3>🔑 Free live-score API key</h3>
-        <p style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
-          Get a free key at <b>cricapi.com</b> or <b>cricketdata.org</b>. It is stored
-          only in this browser (localStorage) and sent only to that provider.
-        </p>
-        <div className="field">
-          <input autoFocus type="password" value={k} placeholder="paste API key…"
-            onChange={e => setK(e.target.value)} />
-        </div>
-        <div className="modal-actions">
-          <button onClick={onClose}>Cancel</button>
-          <button className="primary" onClick={() => onSave(k.trim())}>Save key</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ---------------- Main ---------------- */
 export default function LiveScoring({ match, updateMatch, matches, setActiveId }) {
   const [wicketOpen, setWicketOpen] = useState(false);
@@ -440,3 +416,5 @@ export default function LiveScoring({ match, updateMatch, matches, setActiveId }
     </>
   );
 }
+
+

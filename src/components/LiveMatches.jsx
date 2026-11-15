@@ -1,100 +1,127 @@
-import React, { useEffect, useState } from 'react';
-import { fetchCurrentMatches, DEMO_MATCHES, PROVIDERS } from '../lib/liveApi.js';
-import { loadApiKey, saveApiKey } from '../lib/storage.js';
+import React, { useCallback, useEffect, useState } from 'react';
+import { fetchCurrentMatches } from '../lib/liveApi.js';
+
+const REFRESH_MS = 60_000;
+
+function formatDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, {
+    weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+  }).format(date);
+}
 
 export default function LiveMatches() {
-  const [apiKey, setApiKey] = useState(loadApiKey());
-  const [provider, setProvider] = useState('cricapi');
   const [items, setItems] = useState([]);
-  const [status, setStatus] = useState('idle'); // idle | loading | error | ok
-  const [err, setErr] = useState('');
+  const [status, setStatus] = useState('loading');
+  const [error, setError] = useState('');
   const [filterLive, setFilterLive] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  const load = async () => {
-    if (!apiKey.trim()) {
-      setStatus('error');
-      setErr('No API key saved. Get a free key (cricapi.com or cricketdata.org) and save it via the 🔑 API Key button.');
-      return;
-    }
-    setStatus('loading');
-    setErr('');
+  const load = useCallback(async (signal) => {
+    setStatus(current => current === 'idle' || current === 'error' ? 'loading' : current);
+    setError('');
     try {
-      const data = await fetchCurrentMatches(provider, apiKey.trim());
+      const data = await fetchCurrentMatches({ signal });
       setItems(data);
+      setLastUpdated(new Date());
       setStatus('ok');
-    } catch (e) {
+    } catch (cause) {
+      if (cause.name === 'AbortError') return;
+      setError(cause.message || 'Could not reach the live score source.');
       setStatus('error');
-      setErr(`${e.message}. Note: the free tier has daily limits and the browser must reach the API directly (CORS). Try the other provider or check your key.`);
     }
-  };
+  }, []);
 
-  useEffect(() => { if (status === 'idle') setItems(DEMO_MATCHES); }, []); // eslint-disable-line
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+    const timer = window.setInterval(() => load(controller.signal), REFRESH_MS);
+    return () => { controller.abort(); window.clearInterval(timer); };
+  }, [load]);
 
-  const shown = filterLive ? items.filter(m => m.status?.includes('won') || m.score?.length) : items;
+  const shown = filterLive ? items.filter(match => match.live) : items;
 
   return (
-    <>
-      <div className="panel">
-        <h2>Live Matches — free APIs</h2>
-        <div className="row">
-          <div>
-            <label>Provider</label>
-            <select value={provider} onChange={e => setProvider(e.target.value)}>
-              {Object.entries(PROVIDERS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label>API key (free tier)</label>
-            <input type="password" value={apiKey} placeholder="paste key…"
-              onChange={e => setApiKey(e.target.value)} />
-          </div>
-          <div style={{ flex: '0 0 auto' }}>
-            <button className="primary" onClick={() => { saveApiKey(apiKey.trim()); load(); }}>
-              {status === 'loading' ? 'Loading…' : '💾 Save key & fetch'}
-            </button>
-          </div>
-          <div style={{ flex: '0 0 auto' }}>
-            <label style={{ visibility: 'hidden' }}>f</label>
-            <button onClick={() => setFilterLive(f => !f)}>
-              {filterLive ? 'show all' : 'show in-play only'}
-            </button>
-          </div>
+    <section className="live-center" aria-labelledby="live-title">
+      <div className="live-heading">
+        <div>
+          <span className="eyebrow">CRICKET · LIVE CENTRE</span>
+          <h2 id="live-title">The matchday, at a glance.</h2>
+          <p>Live scores and fixtures, refreshed every minute. No account or API key required.</p>
         </div>
-
-        {status === 'error' && <div className="notice warn" style={{ marginTop: 10 }}>⚠ {err}</div>}
-        {!apiKey && (
-          <div className="notice info" style={{ marginTop: 10 }}>
-            Free keys: <b>cricapi.com</b> (Web dashboard → get key) or <b>cricketdata.org</b>.
-            The key is stored only in this browser's localStorage. Below are demo matches until you fetch live data.
-          </div>
-        )}
+        <div className="live-tools">
+          {lastUpdated && <span className="updated-at">Updated {lastUpdated.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>}
+          <button className="refresh-button" onClick={() => load()} disabled={status === 'loading'}>
+            <span aria-hidden="true">↻</span> {status === 'loading' ? 'Updating' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
-      {shown.map(m => (
-        <div className="live-card" key={m.id}>
-          <h4>
-            {m.demo && <span className="badge-demo">DEMO</span>} {m.name}
-            <span className="tag" style={{ marginLeft: 8 }}>{m.matchType?.toUpperCase()}</span>
-          </h4>
-          <div className="status">{m.status}</div>
-          <div className="scoreline">
-            {m.venue && <>📍 {m.venue} · </>}
-            {m.date && new Date(m.date).toLocaleString()}
-          </div>
-          {(m.score || []).map((s, i) => (
-            <div className="scoreline" key={i}>
-              <b>{s.team}</b>: {s.runs}{s.wickets !== '' ? `/${s.wickets}` : ''} in {s.overs} ov
-            </div>
-          ))}
-          {(m.teams || []).length > 0 && (
-            <div className="scoreline">{m.teams.join(' vs ')}</div>
-          )}
+      <div className="live-toolbar">
+        <div className="live-filter" role="group" aria-label="Filter matches">
+          <button className={!filterLive ? 'selected' : ''} onClick={() => setFilterLive(false)}>All matches <span>{items.length}</span></button>
+          <button className={filterLive ? 'selected' : ''} onClick={() => setFilterLive(true)}>Live now <span>{items.filter(match => match.live).length}</span></button>
         </div>
-      ))}
+        <span className="source-label"><span className="source-dot" /> Free public score feed</span>
+      </div>
 
-      {status === 'ok' && items.length === 0 && (
-        <div className="panel"><p style={{ color: 'var(--muted)' }}>No matches returned right now.</p></div>
+      {status === 'error' && (
+        <div className="feed-message feed-error" role="alert">
+          <span className="feed-message-icon" aria-hidden="true">!</span>
+          <div><strong>Scores could not be refreshed</strong><p>{error}. Your saved match data is safe; try again in a moment.</p></div>
+          <button onClick={() => load()}>Try again</button>
+        </div>
       )}
-    </>
+
+      {status === 'loading' && items.length === 0 && (
+        <div className="match-grid" aria-label="Loading matches">
+          {[1, 2, 3].map(n => <div className="match-skeleton" key={n}><span /><span /><span /></div>)}
+        </div>
+      )}
+
+      {status === 'ok' && shown.length > 0 && (
+        <div className="match-grid">
+          {shown.map(match => (
+            <article className={`match-card ${match.live ? 'is-live' : ''}`} key={match.id}>
+              <div className="match-card-top">
+                <span className={`match-state ${match.live ? 'live' : ''}`}>
+                  {match.live && <span className="live-dot" />}{match.live ? 'LIVE' : 'MATCH'}
+                </span>
+                <span className="match-format">{match.matchType}</span>
+              </div>
+              <h3>{match.name}</h3>
+              <p className="match-status">{match.status}</p>
+              <div className="match-scores">
+                {(match.score || []).length > 0 ? match.score.map((score, index) => (
+                  <div className="match-score-row" key={`${match.id}-${index}`}>
+                    <div><b>{score.team}</b>{score.innings?.length > 0 && <small>{score.innings.map((inn, i) => inn.runs != null ? `${i + 1}${i + 1 === 1 ? 'st' : i + 1 === 2 ? 'nd' : 'th'} innings ${inn.runs}${inn.wickets != null ? `/${inn.wickets}` : ''}${inn.overs ? ` (${inn.overs} ov)` : ''}` : '').filter(Boolean).join(' · ')}</small>}</div>
+                    <strong>{score.runs === '' ? '—' : score.runs}{score.wickets !== '' && score.wickets != null ? `/${score.wickets}` : ''}</strong>
+                  </div>
+                )) : (
+                  <div className="match-teams">{(match.teams || []).join('  ·  ') || 'Teams to be confirmed'}</div>
+                )}
+              </div>
+              <div className="match-card-foot">
+                <span>{match.venue || 'Venue to be confirmed'}</span>
+                <span>{formatDate(match.date)}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {status === 'ok' && shown.length === 0 && (
+        <div className="empty-matches">
+          <span className="empty-ball" aria-hidden="true">🏏</span>
+          <h3>{filterLive ? 'No live matches right now' : 'No matches on the board'}</h3>
+          <p>{filterLive ? 'Switch to all matches to see upcoming fixtures and recent results.' : 'There are no fixtures available from the score feed right now. Check back closer to match time.'}</p>
+          {filterLive && <button onClick={() => setFilterLive(false)}>Show all matches</button>}
+        </div>
+      )}
+
+      <p className="feed-attribution">Scores are supplied by ESPN’s publicly accessible feed. It is an unofficial feed and its availability or coverage can change.</p>
+    </section>
   );
 }
+
