@@ -4,9 +4,11 @@ import LiveScoring from './components/LiveScoring.jsx';
 import ScorecardView from './components/ScorecardView.jsx';
 import PlayersView from './components/PlayersView.jsx';
 import LiveMatches from './components/LiveMatches.jsx';
-import { saveState, loadState } from './lib/storage.js';
+import LeagueView from './components/LeagueView.jsx';
+import { saveState, loadState, loadLeagues, saveLeagues } from './lib/storage.js';
 
 const TABS = [
+  ['league', '🏆', 'League', 'League'],
   ['setup', '＋', 'New match', 'Set up'],
   ['score', '◉', 'Live scoring', 'Score'],
   ['card', '▤', 'Scorecard', 'Cards'],
@@ -16,13 +18,15 @@ const TABS = [
 
 export default function App() {
   const restored = useMemo(() => loadState(), []);
+  const [leagues, setLeagues] = useState(() => loadLeagues());
   const [matches, setMatches] = useState(restored?.matches || []);
   const [teams, setTeams] = useState(restored?.teams || []);
   const [activeId, setActiveId] = useState(restored?.activeId || null);
-  const [tab, setTab] = useState('live');
+  const [tab, setTab] = useState(() => loadLeagues().length ? 'league' : 'live');
   const [flash, setFlash] = useState('');
 
   useEffect(() => { saveState({ matches, teams, activeId }); }, [matches, teams, activeId]);
+  useEffect(() => { saveLeagues(leagues); }, [leagues]);
 
   const activeMatch = matches.find(match => match.id === activeId) || null;
   const updateMatch = (id, fn) => setMatches(previous => previous.map(match => match.id === id ? fn(match) : match));
@@ -31,7 +35,7 @@ export default function App() {
   const onExport = async () => {
     if (!matches.length && !teams.length) return say('Nothing to export yet.');
     const { exportWorkbook } = await import('./lib/excel.js');
-    exportWorkbook(matches, teams);
+    exportWorkbook(matches, teams, undefined, leagues);
     say('Your workbook is ready.');
   };
 
@@ -44,6 +48,7 @@ export default function App() {
       const imported = await importWorkbook(file);
       setMatches(imported.matches);
       setTeams(imported.teams);
+      if (imported.hasLeagues) setLeagues(imported.leagues);
       const active = imported.matches.find(match => match.status !== 'completed') || imported.matches[0];
       setActiveId(active?.id || null);
       say(`Imported ${imported.matches.length} match(es) and ${imported.teams.length} team(s).`);
@@ -79,6 +84,7 @@ export default function App() {
       {flash && <div className="toast" role="status">{flash}</div>}
 
       <main>
+        {tab === 'league' && <LeagueView leagues={leagues} setLeagues={setLeagues} teams={teams} setTeams={setTeams} matches={matches} setMatches={setMatches} setActiveId={setActiveId} onGoScore={() => setTab('score')} onGoCard={() => setTab('card')} />}
         {tab === 'setup' && <MatchSetup matches={matches} teams={teams} activeMatch={activeMatch} setMatches={setMatches} setTeams={setTeams} setActiveId={setActiveId} updateMatch={updateMatch} onGoScore={() => setTab('score')} />}
         {tab === 'score' && <LiveScoring match={activeMatch} updateMatch={updateMatch} matches={matches} setActiveId={setActiveId} />}
         {tab === 'card' && <ScorecardView match={activeMatch} matches={matches} setActiveId={setActiveId} />}

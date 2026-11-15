@@ -180,14 +180,13 @@ export function currentInningsView(match) {
 /** True when the first innings is complete (overs done or all out). */
 export function firstInningsComplete(match) {
   const inn = deriveInnings(eventsOfInnings(match, 1));
-  const allOut = match.team1.players.length + match.team2.players.length > 0 &&
-    inn.wickets >= Math.max(teamSize(match), 1) * 2 - 2; // simplified: 2 sides share XI? no — per side
-  const perSide = teamSize(match);
-  return inn.legalBalls >= match.overs * 6 || inn.wickets >= perSide - 1 || false;
+  const battingTeam = battingTeamFor(match, 1) === match.team1.name ? match.team1 : match.team2;
+  const wicketsToFall = Math.max((battingTeam.players || []).length - 1, 1);
+  return inn.legalBalls >= match.overs * 6 || inn.wickets >= wicketsToFall;
 }
 
 export const teamSize = (match) => Math.max(
-  match.team1.players.length, match.team2.players.length, 11);
+  match.team1.players?.length || 0, match.team2.players?.length || 0, 1);
 
 /** Which team bats in the given innings, based on the toss. */
 export function battingTeamFor(match, inningsNo) {
@@ -204,14 +203,16 @@ export function battingTeamFor(match, inningsNo) {
 export function refreshResult(match) {
   const i1 = deriveInnings(eventsOfInnings(match, 1));
   const i2 = deriveInnings(eventsOfInnings(match, 2));
-  const size = teamSize(match);
-  const perSide = size >= 11 ? 10 : size - 1; // wickets to fall
+  const firstTeam = battingTeamFor(match, 1) === match.team1.name ? match.team1 : match.team2;
+  const secondTeam = battingTeamFor(match, 2) === match.team1.name ? match.team1 : match.team2;
+  const firstWicketsToFall = Math.max((firstTeam.players || []).length - 1, 1);
+  const secondWicketsToFall = Math.max((secondTeam.players || []).length - 1, 1);
 
   if (i1.legalBalls === 0) return { ...match };
 
   if (i2.legalBalls === 0) {
     // still first innings (or just starting second)
-    if (i1.legalBalls >= match.overs * 6 || i1.wickets >= perSide) {
+    if (i1.legalBalls >= match.overs * 6 || i1.wickets >= firstWicketsToFall) {
       return { ...match, currentInnings: 2, status: match.status === 'completed' ? 'completed' : 'live' };
     }
     return { ...match };
@@ -219,19 +220,19 @@ export function refreshResult(match) {
 
   const target = i1.runs + 1;
   const ballsLeft = match.overs * 6 - i2.legalBalls;
-  const chasingAllOut = i2.wickets >= perSide;
+  const chasingAllOut = i2.wickets >= secondWicketsToFall;
   const oversDone = i2.legalBalls >= match.overs * 6;
 
   if (i2.runs >= target) {
     return { ...match, status: 'completed',
-      result: `${match.team2.name} won by ${perSide - i2.wickets} wickets (${ballsLeft} balls left) — target ${target}` };
+      result: `${battingTeamFor(match, 2)} won by ${secondWicketsToFall - i2.wickets} wickets (${ballsLeft} balls left) — target ${target}` };
   }
   if (i2.runs === i1.runs && (oversDone || chasingAllOut)) {
     return { ...match, status: 'completed', result: 'Match tied!' };
   }
   if (i1.runs > i2.runs && (oversDone || chasingAllOut)) {
     return { ...match, status: 'completed',
-      result: `${match.team1.name} won by ${i1.runs - i2.runs} runs` };
+      result: `${battingTeamFor(match, 1)} won by ${i1.runs - i2.runs} runs` };
   }
   return { ...match };
 }
@@ -278,3 +279,5 @@ export function careerStats(playerName, matches) {
   c.best = c.bestW || c.bestR < 999 ? `${c.bestW}/${c.bestR === 999 ? 0 : c.bestR}` : '-';
   return c;
 }
+
+

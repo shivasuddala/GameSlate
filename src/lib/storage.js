@@ -1,6 +1,7 @@
 // Tiny localStorage persistence layer (Excel is the real "DB",
 // localStorage keeps the in-progress session so a refresh never loses a ball).
 const KEY = 'gameslate-v1';
+const LEAGUES_KEY = 'gameslate-leagues-v1';
 const LEGACY_KEYS = ['cricket-scoreboard-v1'];
 
 function readJson(k) {
@@ -33,6 +34,16 @@ export function loadState() {
 export function clearState() {
   localStorage.removeItem(KEY);
   LEGACY_KEYS.forEach(k => localStorage.removeItem(k));
+}
+
+export function saveLeagues(leagues) {
+  try { localStorage.setItem(LEAGUES_KEY, JSON.stringify(leagues)); }
+  catch (e) { console.warn('saveLeagues failed', e); }
+}
+
+export function loadLeagues() {
+  try { return JSON.parse(localStorage.getItem(LEAGUES_KEY) || '[]'); }
+  catch { return []; }
 }
 
 
